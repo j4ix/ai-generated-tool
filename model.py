@@ -2,49 +2,46 @@ import tensorflow as tf
 
 class GAN:
     def __init__(self):
-        # define generator and discriminator networks
         self.generator = self.build_generator()
         self.discriminator = self.build_discriminator()
 
-        # define loss functions and optimizers
-        self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         self.generator_optimizer = tf.keras.optimizers.Adam(1e-4)
         self.discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)
 
+        self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+
+        self.losses = {}
+
     def build_generator(self):
         model = tf.keras.Sequential([
-            # input layer
-            tf.keras.layers.Dense(8 * 8 * 256, input_shape=(100,)),
-            tf.keras.layers.Reshape((8, 8, 256)),
+            tf.keras.layers.Dense(16 * 16 * 256, use_bias=False, input_shape=(100,)),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.LeakyReLU(),
 
-            # convolutional layers
-            tf.keras.layers.Conv2DTranspose(128, (4, 4), strides=(2, 2), padding='same'),
+            tf.keras.layers.Reshape((16, 16, 256)),
+            tf.keras.layers.Conv2DTranspose(128, (5, 5), strides=(1, 1), padding='same', use_bias=False),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.LeakyReLU(),
 
-            tf.keras.layers.Conv2DTranspose(64, (4, 4), strides=(2, 2), padding='same'),
+            tf.keras.layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', use_bias=False),
             tf.keras.layers.BatchNormalization(),
             tf.keras.layers.LeakyReLU(),
 
-            tf.keras.layers.Conv2DTranspose(1, (4, 4), strides=(2, 2), padding='same', activation='tanh')
+            tf.keras.layers.Conv2DTranspose(1, (5, 5), strides=(2, 2), padding='same', use_bias=False, activation='tanh')
         ])
 
         return model
 
     def build_discriminator(self):
         model = tf.keras.Sequential([
-            # convolutional layers
-            tf.keras.layers.Conv2D(64, (4, 4), strides=(2, 2), padding='same', input_shape=(128, 128, 1)),
+            tf.keras.layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same', input_shape=[128, 128, 1]),
             tf.keras.layers.LeakyReLU(),
             tf.keras.layers.Dropout(0.3),
 
-            tf.keras.layers.Conv2D(128, (4, 4), strides=(2, 2), padding='same'),
+            tf.keras.layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same'),
             tf.keras.layers.LeakyReLU(),
             tf.keras.layers.Dropout(0.3),
 
-            # output layer
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(1)
         ])
@@ -92,6 +89,8 @@ class GAN:
         gradients = tape.gradient(generator_loss, self.generator.trainable_variables)
         self.generator_optimizer.apply_gradients(zip(gradients, self.generator.trainable_variables))
 
+        self.losses['generator'] = generator_loss
+
     @tf.function
     def train_discriminator(self, real_mp3s, fake_mp3s):
         with tf.GradientTape() as tape:
@@ -104,6 +103,8 @@ class GAN:
 
         gradients = tape.gradient(total_loss, self.discriminator.trainable_variables)
         self.discriminator_optimizer.apply_gradients(zip(gradients, self.discriminator.trainable_variables))
+
+        self.losses['discriminator'] = total_loss
 
     def train(self, dataset, epochs, batch_size, seed_mp3s):
         for epoch in range(epochs):
