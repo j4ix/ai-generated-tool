@@ -1,5 +1,29 @@
 import tensorflow as tf
-from model import GAN
+from tensorflow.python.keras import layers
+
+class SpectralNormalization(layers.Layer):
+    def __init__(self, layer):
+        super(SpectralNormalization, self).__init__()
+        self.layer = layer
+
+    def build(self, input_shape):
+        self.u = self.add_weight(shape=(1, self.layer.kernel.shape[-1]), initializer='random_normal', trainable=False, name='u')
+        super(SpectralNormalization, self).build(input_shape)
+
+    def call(self, x):
+        self.update_weights()
+        return self.layer(x)
+
+    def update_weights(self):
+        w = self.layer.kernel
+        w_bar = w / tf.norm(w, ord=2, axis=0)
+        u = self.u
+        for _ in range(5):
+            v = tf.matmul(u, w_bar, transpose_b=True)
+            v = v / tf.norm(v, ord=2, axis=0)
+            u = tf.matmul(w_bar, v, transpose_a=True)
+            u = u / tf.norm(u, ord=2, axis=0)
+        self.u.assign(u)
 
 class GAN:
     def __init__(self):
@@ -11,6 +35,11 @@ class GAN:
         self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         self.generator_optimizer = tf.keras.optimizers.Adam(1e-4)
         self.discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)
+
+        self.losses = {
+            'generator': None,
+            'discriminator': None
+        }
 
     def build_generator(self):
         model = tf.keras.Sequential([
@@ -81,6 +110,8 @@ class GAN:
             file_path = f'{output_dir}/{filename}'
             tf.io.write_file(file_path, mp3)
 
+        print(f'Saved {num_samples} generated MP3s to {output_dir}')
+
         return generated_mp3s
 
 
@@ -89,12 +120,12 @@ class GAN:
         with tf.GradientTape() as tape:
             generated_mp3s = self.generator(input_noise)
             fake_output = self.discriminator(generated_mp3s)
-            generator_loss = self.cross_entropy(tf.ones_like(fake_output), fake_output)
+            loss = self.cross_entropy(tf.ones_like(fake_output), fake_output)
 
-        gradients = tape.gradient(generator_loss, self.generator.trainable_variables)
+        gradients = tape.gradient(loss, self.generator.trainable_variables)
         self.generator_optimizer.apply_gradients(zip(gradients, self.generator.trainable_variables))
-
-        return generator_loss
+        self.losses['generator'] = loss
+        return loss
 
     @tf.function
     def train_discriminator(self, real_mp3s, fake_mp3s):
@@ -108,5 +139,5 @@ class GAN:
 
         gradients = tape.gradient(total_loss, self.discriminator.trainable_variables)
         self.discriminator_optimizer.apply_gradients(zip(gradients, self.discriminator.trainable_variables))
-
+        self.losses['discriminator'] = total_loss
         return total_loss
