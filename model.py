@@ -57,8 +57,13 @@ class GAN:
 
     @tf.function
     def train_generator(self, input_noise):
-        # TODO: train the generator network
-        pass
+        with tf.GradientTape() as tape:
+            generated_mp3s = self.generator(input_noise)
+            fake_output = self.discriminator(generated_mp3s)
+            generator_loss = self.cross_entropy(tf.ones_like(fake_output), fake_output)
+
+        gradients = tape.gradient(generator_loss, self.generator.trainable_variables)
+        self.generator_optimizer.apply_gradients(zip(gradients, self.generator.trainable_variables))
 
     @tf.function
     def train_discriminator(self, real_mp3s, fake_mp3s):
