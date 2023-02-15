@@ -52,6 +52,37 @@ class GAN:
         return model
 
     def generate_samples(self, num_samples, seed_mp3):
+        # TODO: generate new MP3s using the generator network and seed MP3
+        pass
+
+    @tf.function
+    def train_generator(self, input_noise):
+        # TODO: train the generator network
+        pass
+
+    @tf.function
+    def train_discriminator(self, real_mp3s, fake_mp3s):
+        # TODO: train the discriminator network
+        pass
+
+    def train(self, dataset, epochs, batch_size, seed_mp3s):
+        for epoch in range(epochs):
+            for batch in dataset.batch(batch_size):
+                # generate random noise for generator input
+                noise = tf.random.normal([batch_size, noise_dim])
+
+                # train discriminator on real and fake MP3s
+                real_mp3s = batch
+                fake_mp3s = self.generator(noise)
+                self.train_discriminator(real_mp3s, fake_mp3s)
+
+                # train generator to fool discriminator
+                self.train_generator(noise)
+
+            # generate new MP3s using seed MP3s
+            if epoch % 100 == 0:
+                generated_mp3s = self.generate_samples(num_samples=len(seed_mp3s), seed_mp3=seed_mp3s)
+                # TODO: save generated MP3s to disk and display progress
         # load seed MP3s and preprocess for generator input
         seed_mp3s = [tf.io.read_file(mp3) for mp3 in seed_mp3]
         seed_mp3s = [tf.audio.decode_mp3(mp3) for mp3 in seed_mp3s]
