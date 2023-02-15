@@ -23,7 +23,7 @@ class SpectralNormalization(layers.Layer):
             v = v / tf.norm(v, ord=2, axis=0)
             u = tf.matmul(w_bar, v, transpose_a=True)
             u = u / tf.norm(u, ord=2, axis=0)
-        self.u.assign(u)
+        self.u = u
 
 class GAN:
     def __init__(self):
