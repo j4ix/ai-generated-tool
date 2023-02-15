@@ -51,9 +51,36 @@ class GAN:
 
         return model
 
-    def generate_samples(self, num_samples, seed_mp3):
-        # TODO: generate new MP3s using the generator network and seed MP3
-        pass
+    def generate_samples(self, num_samples, seed_mp3, output_dir, epoch):
+        # load seed MP3s and preprocess for generator input
+        seed_mp3s = [tf.io.read_file(mp3) for mp3 in seed_mp3]
+        seed_mp3s = [tf.audio.decode_mp3(mp3) for mp3 in seed_mp3s]
+        seed_mp3s = [tf.audio.encode_wav(tf.expand_dims(mp3.audio, axis=-1), sample_rate=mp3.sample_rate) for mp3 in seed_mp3s]
+        seed_mp3s = [tf.audio.decode_wav(mp3) for mp3 in seed_mp3s]
+        seed_mp3s = [tf.image.resize(mp3.audio, (128, 128)) for mp3 in seed_mp3s]
+        seed_mp3s = [tf.cast(mp3.audio, tf.float32) / 255.0 for mp3 in seed_mp3s]
+        seed_mp3s = [tf.expand_dims(mp3, axis=0) for mp3 in seed_mp3s]
+
+        # generate new MP3s using generator network
+        generated_mp3s = []
+        for i in range(num_samples):
+            noise = tf.random.normal([1, 100])
+            generated_mp3 = self.generator(noise)
+            generated_mp3s.append(generated_mp3)
+
+        # postprocess generated MP3s
+        generated_mp3s = [mp3 * 255.0 for mp3 in generated_mp3s]
+        generated_mp3s = [tf.cast(mp3, tf.int16) for mp3 in generated_mp3s]
+        generated_mp3s = [tf.squeeze(mp3, axis=-1) for mp3 in generated_mp3s]
+        generated_mp3s = [tf.audio.encode_wav(mp3, sample_rate=44100) for mp3 in generated_mp3s]
+
+        # save generated MP3s to disk
+        for i, mp3 in enumerate(generated_mp3s):
+            filename = f'generated_mp3_epoch{epoch}_sample{i}.mp3'
+            file_path = f'{output_dir}/{filename}'
+            tf.io.write_file(file_path, mp3)
+
+        return generated_mp3s
 
     @tf.function
     def train_generator(self, input_noise):
