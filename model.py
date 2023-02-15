@@ -66,4 +66,12 @@ class GAN:
         for i in range(num_samples):
             noise = tf.random.normal([1, 100])
             generated_mp3 = self.generator(noise)
-           
+            generated_mp3s.append(generated_mp3)
+
+        # postprocess generated MP3s
+        generated_mp3s = [mp3 * 255.0 for mp3 in generated_mp3s]
+        generated_mp3s = [tf.cast(mp3, tf.int16) for mp3 in generated_mp3s]
+        generated_mp3s = [tf.squeeze(mp3, axis=-1) for mp3 in generated_mp3s]
+        generated_mp3s = [tf.audio.encode_wav(mp3, sample_rate=44100) for mp3 in generated_mp3s]
+
+        return generated_mp3s
