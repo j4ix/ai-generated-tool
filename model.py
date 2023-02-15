@@ -67,8 +67,16 @@ class GAN:
 
     @tf.function
     def train_discriminator(self, real_mp3s, fake_mp3s):
-        # TODO: train the discriminator network
-        pass
+        with tf.GradientTape() as tape:
+            real_output = self.discriminator(real_mp3s)
+            fake_output = self.discriminator(fake_mp3s)
+
+            real_loss = self.cross_entropy(tf.ones_like(real_output), real_output)
+            fake_loss = self.cross_entropy(tf.zeros_like(fake_output), fake_output)
+            total_loss = real_loss + fake_loss
+
+        gradients = tape.gradient(total_loss, self.discriminator.trainable_variables)
+        self.discriminator_optimizer.apply_gradients(zip(gradients, self.discriminator.trainable_variables))
 
     def train(self, dataset, epochs, batch_size, seed_mp3s):
         for epoch in range(epochs):
