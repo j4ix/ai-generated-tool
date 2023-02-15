@@ -4,10 +4,10 @@ class GAN:
     def __init__(self):
         self.generator = self.build_generator()
         self.discriminator = self.build_discriminator()
-
+        self.discriminator_loss = tf.keras.metrics.Mean(name='discriminator_loss')
         self.generator_optimizer = tf.keras.optimizers.Adam(1e-4)
         self.discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)
-
+        self.generator_loss = tf.keras.metrics.Mean(name='generator_loss')
         self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
         self.losses = {}
@@ -107,44 +107,76 @@ class GAN:
 
         self.losses['discriminator'] = total_loss
 
-    def train(self, dataset, epochs, batch_size, seed_mp3s):
+    def train(data_dir, batch_size, epochs, noise_dim, seed_mp3s, output_dir):
+        # set up GPU acceleration
+        gpus = tf.config.experimental.list_physical_devices('GPU')
+        if gpus:
+            try:
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+            except RuntimeError as e:
+                print(e)
+
+        # load MP3 dataset
+        dataset = load_mp3_dataset(data_dir, batch_size=batch_size)
+
+        # instantiate GAN model
+        gan = GAN()
+
+        # set up loss metrics
+        gan.discriminator_loss = tf.keras.metrics.Mean(name='discriminator_loss')
+        gan.generator_loss = tf.keras.metrics.Mean(name='generator_loss')
+
+        # train GAN model
         for epoch in range(epochs):
-            for batch in dataset.batch(batch_size):
-                # generate random noise for generator input
+            for batch in dataset:
+                # generate input noise for generator
                 noise = tf.random.normal([batch_size, noise_dim])
 
-                # train discriminator on real and fake MP3s
+                # train discriminator
                 real_mp3s = batch
-                fake_mp3s = self.generator(noise)
-                self.train_discriminator(real_mp3s, fake_mp3s)
+                fake_mp3s = gan.generator(noise)
+                gan.train_discriminator(real_mp3s, fake_mp3s)
 
-                # train generator to fool discriminator
-                self.train_generator(noise)
+                # generate new samples every 100 epochs
+                if epoch % 100 == 0:
+                    generated_mp3s = gan.generate_samples(num_samples=5, seed_mp3=seed_mp3s, output_dir=output_dir, epoch=epoch)
 
-            # generate new MP3s using seed MP3s
-            if epoch % 100 == 0:
-                generated_mp3s = self.generate_samples(num_samples=len(seed_mp3s), seed_mp3=seed_mp3s)
-                # TODO: save generated MP3s to disk and display progress
-        # load seed MP3s and preprocess for generator input
-        seed_mp3s = [tf.io.read_file(mp3) for mp3 in seed_mp3]
-        seed_mp3s = [tf.audio.decode_mp3(mp3) for mp3 in seed_mp3s]
-        seed_mp3s = [tf.audio.encode_wav(tf.expand_dims(mp3.audio, axis=-1), sample_rate=mp3.sample_rate) for mp3 in seed_mp3s]
-        seed_mp3s = [tf.audio.decode_wav(mp3) for mp3 in seed_mp3s]
-        seed_mp3s = [tf.image.resize(mp3.audio, (128, 128)) for mp3 in seed_mp3s]
-        seed_mp3s = [tf.cast(mp3.audio, tf.float32) / 255.0 for mp3 in seed_mp3s]
-        seed_mp3s = [tf.expand_dims(mp3, axis=0) for mp3 in seed_mp3s]
+                # train generator
+                noise = tf.random.normal([batch_size, noise_dim])
+                gan.train_generator(noise)
 
-        # generate new MP3s using generator network
-        generated_mp3s = []
-        for i in range(num_samples):
-            noise = tf.random.normal([1, 100])
-            generated_mp3 = self.generator(noise)
-            generated_mp3s.append(generated_mp3)
+                # update loss metrics
+                gan.discriminator_loss(gan.losses['discriminator'])
+                gan.generator_loss(gan.losses['generator'])
 
-        # postprocess generated MP3s
-        generated_mp3s = [mp3 * 255.0 for mp3 in generated_mp3s]
-        generated_mp3s = [tf.cast(mp3, tf.int16) for mp3 in generated_mp3s]
-        generated_mp3s = [tf.squeeze(mp3, axis=-1) for mp3 in generated_mp3s]
-        generated_mp3s = [tf.audio.encode_wav(mp3, sample_rate=44100) for mp3 in generated_mp3s]
+            # display training progress every 10 epochs
+            if epoch % 10 == 0:
+                print(f'Epoch {epoch}/{epochs}')
+                print(f'Discriminator Loss: {gan.discriminator_loss.result()}')
+                print(f'Generator Loss: {gan.generator_loss.result()}')
+                gan.discriminator_loss.reset_states()
+                gan.generator_loss.reset_states()
+            # load seed MP3s and preprocess for generator input
+            seed_mp3s = [tf.io.read_file(mp3) for mp3 in seed_mp3]
+            seed_mp3s = [tf.audio.decode_mp3(mp3) for mp3 in seed_mp3s]
+            seed_mp3s = [tf.audio.encode_wav(tf.expand_dims(mp3.audio, axis=-1), sample_rate=mp3.sample_rate) for mp3 in seed_mp3s]
+            seed_mp3s = [tf.audio.decode_wav(mp3) for mp3 in seed_mp3s]
+            seed_mp3s = [tf.image.resize(mp3.audio, (128, 128)) for mp3 in seed_mp3s]
+            seed_mp3s = [tf.cast(mp3.audio, tf.float32) / 255.0 for mp3 in seed_mp3s]
+            seed_mp3s = [tf.expand_dims(mp3, axis=0) for mp3 in seed_mp3s]
 
-        return generated_mp3s
+            # generate new MP3s using generator network
+            generated_mp3s = []
+            for i in range(num_samples):
+                noise = tf.random.normal([1, 100])
+                generated_mp3 = self.generator(noise)
+                generated_mp3s.append(generated_mp3)
+
+            # postprocess generated MP3s
+            generated_mp3s = [mp3 * 255.0 for mp3 in generated_mp3s]
+            generated_mp3s = [tf.cast(mp3, tf.int16) for mp3 in generated_mp3s]
+            generated_mp3s = [tf.squeeze(mp3, axis=-1) for mp3 in generated_mp3s]
+            generated_mp3s = [tf.audio.encode_wav(mp3, sample_rate=44100) for mp3 in generated_mp3s]
+
+            return generated_mp3s
