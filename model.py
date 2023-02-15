@@ -79,6 +79,7 @@ class GAN:
 
         return generated_mp3s
 
+
     @tf.function
     def train_generator(self, input_noise):
         with tf.GradientTape() as tape:

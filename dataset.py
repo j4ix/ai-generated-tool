@@ -1,14 +1,20 @@
 import tensorflow as tf
 
-def load_and_preprocess_mp3(file_path):
-    # TODO: load MP3 file and preprocess for GAN training
-    pass
+def load_mp3_dataset(data_dir, batch_size):
+    file_pattern = f'{data_dir}/*.mp3'
 
-def load_mp3_dataset(data_dir):
-    # list all MP3 files in data directory
-    file_paths = tf.data.Dataset.list_files(data_dir + '/*.mp3')
+    def decode_mp3(mp3):
+        audio = tf.audio.decode_mp3(mp3)
+        audio = tf.audio.encode_wav(tf.expand_dims(audio.audio, axis=-1), sample_rate=audio.sample_rate)
+        audio = tf.audio.decode_wav(audio)
+        audio = tf.image.resize(audio.audio, (128, 128))
+        audio = tf.cast(audio, tf.float32) / 255.0
+        return audio
 
-    # load and preprocess MP3 files in parallel using all available CPU threads
-    dataset = file_paths.map(load_and_preprocess_mp3, num_parallel_calls=tf.data.AUTOTUNE)
+    dataset = tf.data.Dataset.list_files(file_pattern)
+    dataset = dataset.map(lambda x: tf.io.read_file(x))
+    dataset = dataset.map(decode_mp3)
+    dataset = dataset.shuffle(buffer_size=10000)
+    dataset = dataset.batch(batch_size, drop_remainder=True)
 
     return dataset
