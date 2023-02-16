@@ -27,9 +27,10 @@ class SpectralNormalization(layers.Layer):
 
 class GAN:
     def __init__(self):
-        # define generator and discriminator networks
+        # define generator discriminator, and GAN networks
         self.generator = self.build_generator()
         self.discriminator = self.build_discriminator()
+        self.model = self.build_gan()
 
         # define loss functions and optimizers
         self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
@@ -79,6 +80,12 @@ class GAN:
             tf.keras.layers.Dense(1)
         ])
 
+        return model
+
+    def build_gan(self):
+        # connect the generator and discriminator networks to form the GAN
+        self.discriminator.trainable = False
+        model = tf.keras.Sequential([self.generator, self.discriminator])
         return model
 
     def generate_samples(self, num_samples, seed_mp3, output_dir, epoch):

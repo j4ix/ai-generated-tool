@@ -1,13 +1,7 @@
 import os
 import tensorflow as tf
-import pydub
-import tempfile
-
-def save_mp3(audio, file_path):
-    audio = tf.cast(audio * 32768.0, tf.int16)
-    audio = audio.numpy().flatten()
-    audio = pydub.AudioSegment(audio.tobytes(), frame_rate=44100, sample_width=2, channels=1)
-    audio.export(file_path, format='mp3')
+import tensorflow_io as tfio
+from pydub import AudioSegment
 
 def load_mp3_dataset(data_dir, batch_size=64, shuffle_buffer_size=10000):
     # get list of MP3 file paths
@@ -24,31 +18,26 @@ def load_mp3_dataset(data_dir, batch_size=64, shuffle_buffer_size=10000):
     dataset = dataset.shuffle(len(filepaths))
 
     # decode MP3 files and pad to 128k samples
+    @tf.function
     def decode_mp3(file_path):
-        audio_binary = tf.io.read_file(file_path)
-
-        # write audio to temporary file
-        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as f:
-            f.write(audio_binary.numpy())
-            audio_file = f.name
- 
-        audio = pydub.AudioSegment.from_mp3(audio_file)
-        audio = audio.set_channels(2)  # set to stereo
+        file_path = tf.strings.join([data_dir, '/', file_path])
+        audio = AudioSegment.from_file(file_path.numpy(), format="mp3")
+        audio = audio.set_channels(1)  # convert stereo to mono
         audio = audio.get_array_of_samples()
-        audio = tf.convert_to_tensor(audio, dtype=tf.float32) / 32768.0  # scale to [-1, 1]
-        audio = tf.reshape(audio, (-1, 2))  # reshape to stereo
+        audio = tf.constant(audio, dtype=tf.float32) / 32768.0
         audio = tf.expand_dims(audio, axis=-1)
         audio = tf.image.resize_with_pad(audio, target_height=128000, target_width=1)
-        save_mp3(audio, file_path + ' test')
+        audio = tf.squeeze(audio, axis=-1)
         return audio
 
+    def load_mp3_wrapper(file_path):
+        return tf.py_function(decode_mp3, [file_path], tf.float32)
 
-    dataset = dataset.map(decode_mp3, num_parallel_calls=tf.data.AUTOTUNE)
+    dataset = dataset.map(load_mp3_wrapper, num_parallel_calls=tf.data.AUTOTUNE)
 
     # batch and shuffle dataset
-    dataset = dataset.shuffle(buffer_size=shuffle_buffer_size)
     dataset = dataset.batch(batch_size, drop_remainder=True)
-
+    dataset = dataset.shuffle(buffer_size=shuffle_buffer_size)
     dataset = dataset.prefetch(tf.data.AUTOTUNE)
 
     return dataset

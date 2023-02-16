@@ -18,6 +18,17 @@ def train(data_dir, batch_size, epochs, noise_dim, seed_mp3s, output_dir):
     # instantiate GAN model
     gan = GAN()
 
+    # compile the model with the Adam optimizer and binary crossentropy loss
+    gan.discriminator.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0002),
+                            loss=tf.keras.losses.BinaryCrossentropy(from_logits=True))
+    gan.generator.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0002),
+                        loss=tf.keras.losses.BinaryCrossentropy(from_logits=True))
+    
+    # compile the GAN model as a whole, using the discriminator loss and no metrics
+    gan.discriminator.trainable = False
+    gan.model = tf.keras.Sequential([gan.generator, gan.discriminator])
+    gan.model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.0002),
+                    loss=tf.keras.losses.BinaryCrossentropy(from_logits=True))
     # set up loss metrics
     discriminator_loss_metric = tf.keras.metrics.Mean(name='discriminator_loss')
     generator_loss_metric = tf.keras.metrics.Mean(name='generator_loss')
